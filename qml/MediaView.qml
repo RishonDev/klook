@@ -15,6 +15,16 @@ Item {
 
     readonly property bool isAudio: mimeName.startsWith("audio/")
 
+    // "3:42" or "1:02:05"
+    readonly property string info: {
+        const s = Math.round(player.duration / 1000);
+        if (s <= 0)
+            return "";
+        const two = n => String(n).padStart(2, "0");
+        const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60;
+        return h > 0 ? `${h}:${two(m)}:${two(s % 60)}` : `${m}:${two(s % 60)}`;
+    }
+
     signal failed()
 
     MediaPlayer {

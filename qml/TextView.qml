@@ -47,6 +47,8 @@ Item {
         }
     }
 
+    readonly property string info: file.lineCount === 1 ? qsTr("1 line") : qsTr("%1 lines").arg(file.lineCount)
+
     TextFile {
         id: file
         filePath: view.filePath

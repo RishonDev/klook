@@ -22,5 +22,7 @@ void TextFile::setFilePath(const QString &path)
         m_text = tr("Could not open file: %1").arg(file.errorString());
         m_truncated = false;
     }
+    // A trailing newline ends the last line rather than starting a new one.
+    m_lineCount = m_text.isEmpty() ? 0 : int(m_text.count(u'\n')) + (m_text.endsWith(u'\n') ? 0 : 1);
     Q_EMIT textChanged();
 }

@@ -24,7 +24,7 @@ jobs:
         run: |
           pacman -Syu --noconfirm --needed git base-devel cmake ninja dbus glib2 \
               qt6-base qt6-declarative qt6-multimedia qt6-svg qt6-webengine \
-              karchive kdbusaddons kwindowsystem layer-shell-qt syntax-highlighting
+              karchive kdbusaddons kservice kwindowsystem layer-shell-qt syntax-highlighting
 
       - uses: actions/checkout@v5
 

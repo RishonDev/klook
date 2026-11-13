@@ -15,6 +15,15 @@ Window {
     required property int cornerRadius
     // "3 / 12" within the folder; set by the Previewer.
     property string position: ""
+    // Set by the Previewer alongside the file (see propertiesFor()).
+    property string kindText: ""
+    property string sizeText: ""
+    property string modifiedText: ""
+    property string appName: ""
+    property string appIcon: ""
+    // "1600 × 900 · 1.2 MB · 3 / 12": what the view knows, then size and place in the folder.
+    readonly property string subtitle: [content.item && content.item.info ? content.item.info : "",
+                                        sizeText, position].filter(s => s.length > 0).join(" · ")
     // Shown on behalf of a file manager that keeps keyboard focus (see Previewer::Show).
     property bool passive: false
 
@@ -152,16 +161,16 @@ Window {
                         }
                         Label {
                             Layout.fillWidth: true
-                            visible: root.position.length > 0
-                            text: root.position
+                            visible: root.subtitle.length > 0
+                            text: root.subtitle
                             horizontalAlignment: Text.AlignHCenter
                             font.pointSize: Qt.application.font.pointSize * 0.8
                             opacity: 0.6
                         }
                     }
                     ToolButton {
-                        icon.name: "document-open"
-                        text: qsTr("Open")
+                        icon.name: root.appIcon || "document-open"
+                        text: root.appName ? qsTr("Open with %1").arg(root.appName) : qsTr("Open")
                         onClicked: { Qt.openUrlExternally(root.fileUrl); root.close(); }
                         ToolTip.text: qsTr("Open with default app (Enter)")
                         ToolTip.visible: hovered

@@ -4,11 +4,12 @@ project(klook VERSION 0.4.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Gui Quick DBus)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Gui Quick DBus Concurrent)
 find_package(KF6WindowSystem REQUIRED)
 find_package(KF6SyntaxHighlighting REQUIRED)
 find_package(KF6Archive REQUIRED)
 find_package(KF6DBusAddons REQUIRED)
+find_package(KF6Service REQUIRED)
 find_package(LayerShellQt REQUIRED)
 
 qt_standard_project_setup(REQUIRES 6.8)
@@ -42,8 +43,8 @@ target_include_directories(klook PRIVATE src)
 target_compile_definitions(klook PRIVATE KLOOK_VERSION="${PROJECT_VERSION}")
 
 target_link_libraries(klook PRIVATE
-    Qt6::Gui Qt6::Quick Qt6::DBus
-    KF6::WindowSystem KF6::SyntaxHighlighting KF6::Archive KF6::DBusAddons
+    Qt6::Gui Qt6::Quick Qt6::DBus Qt6::Concurrent
+    KF6::WindowSystem KF6::SyntaxHighlighting KF6::Archive KF6::DBusAddons KF6::Service
     LayerShellQt::Interface
 )
 

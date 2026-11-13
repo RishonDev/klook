@@ -16,6 +16,9 @@ Item {
         ? Qt.size(loader.item.sourceSize.width, loader.item.sourceSize.height)
         : Qt.size(0, 0)
 
+    readonly property string info: naturalSize.width > 0
+        ? qsTr("%1 × %2").arg(naturalSize.width).arg(naturalSize.height) : ""
+
     signal failed()
 
     Loader {

@@ -11,6 +11,8 @@ Item {
     property url fileUrl
     property string filePath
     property string mimeName
+    // The preview window, for details that arrive after loading (folder size).
+    readonly property var host: Window.window
 
     ColumnLayout {
         anchors.centerIn: parent
@@ -33,12 +35,22 @@ Item {
             horizontalAlignment: Text.AlignHCenter
             elide: Text.ElideMiddle
         }
-        Label {
-            Layout.fillWidth: true
-            text: view.details
-            opacity: 0.7
-            horizontalAlignment: Text.AlignHCenter
-            wrapMode: Text.Wrap
+        // Quick Look's info card: kind, size (or folder contents), modification date.
+        Repeater {
+            model: [
+                view.host ? view.host.kindText : "",
+                view.host ? view.host.details : view.details,
+                view.host && view.host.modifiedText ? qsTr("Modified: %1").arg(view.host.modifiedText) : ""
+            ]
+            delegate: Label {
+                required property string modelData
+                Layout.fillWidth: true
+                visible: modelData.length > 0
+                text: modelData
+                opacity: 0.7
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
+            }
         }
     }
 }

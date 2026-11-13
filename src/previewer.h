@@ -49,6 +49,7 @@ private:
     void show(const QString &path, bool activate = true);
     const QStringList &siblingsOf(const QString &path);
     void releaseMemory();
+    void summariseFolder(const QString &path);
 
     QQmlEngine m_engine;
     QQmlComponent *m_component = nullptr;

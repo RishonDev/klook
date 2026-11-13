@@ -4,7 +4,11 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QDirIterator>
+#include <QElapsedTimer>
+#include <QFutureWatcher>
 #include <QTimer>
+#include <QtConcurrentRun>
 #include <QIcon>
 #include <QLoggingCategory>
 #include <QLocale>
@@ -14,6 +18,8 @@
 #include <QRegion>
 #include <QUrl>
 
+#include <KApplicationTrader>
+#include <KService>
 #include <KWindowEffects>
 #include <LayerShellQt/Window>
 
@@ -63,12 +69,57 @@ QRegion roundedRegion(const QSize &size, int r)
     return region;
 }
 
+// "13 November 2026 at 23:40", the way Quick Look's info card reads.
+QString formatModified(const QDateTime &when)
+{
+    const QLocale locale;
+    return QObject::tr("%1 at %2").arg(locale.toString(when.date(), QStringLiteral("d MMMM yyyy")),
+                                       locale.toString(when.time(), QLocale::ShortFormat));
+}
+
+struct FolderSummary {
+    qint64 items = 0; // direct children
+    qint64 bytes = 0; // everything below, recursively
+    bool partial = false; // stopped early: huge tree
+};
+
+// Runs on a worker thread. Capped in time so a home directory or a network
+// mount can't keep a worker busy; the card then says "more than".
+FolderSummary summarise(const QString &path)
+{
+    FolderSummary summary;
+    const auto filters = QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System;
+    summary.items = QDir(path).entryList(filters).size();
+
+    QElapsedTimer timer;
+    timer.start();
+    QDirIterator it(path, QDir::Files | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        summary.bytes += it.nextFileInfo().size();
+        if (timer.elapsed() > 1500) {
+            summary.partial = true;
+            break;
+        }
+    }
+    return summary;
+}
+
+QString folderDetails(const FolderSummary &summary)
+{
+    const QString items = summary.items == 1 ? QObject::tr("1 item") : QObject::tr("%1 items").arg(summary.items);
+    const QString size = QLocale().formattedDataSize(summary.bytes);
+    return summary.partial ? QObject::tr("%1 · more than %2").arg(items, size) : QObject::tr("%1 · %2").arg(items, size);
+}
+
 QVariantMap propertiesFor(const QFileInfo &info)
 {
     const QMimeType mime = QMimeDatabase().mimeTypeForFile(info);
-    const QString details = info.isDir()
-        ? mime.comment()
-        : QStringLiteral("%1 · %2").arg(mime.comment(), QLocale().formattedDataSize(info.size()));
+    const QString sizeText = info.isDir() ? QString() : QLocale().formattedDataSize(info.size());
+    const QString details = info.isDir() ? QObject::tr("Calculating size…") : sizeText;
+
+    // The app "Open" launches (xdg's default for this type), named like Quick Look's
+    // "Open with Preview" button.
+    const KService::Ptr app = KApplicationTrader::preferredService(mime.name());
 
     return {
         {QStringLiteral("filePath"), info.absoluteFilePath()},
@@ -78,7 +129,12 @@ QVariantMap propertiesFor(const QFileInfo &info)
         {QStringLiteral("mimeName"), mime.name()},
         // Specific icons (e.g. audio-x-vorbis+ogg) are often missing from themes.
         {QStringLiteral("iconName"), QIcon::hasThemeIcon(mime.iconName()) ? mime.iconName() : mime.genericIconName()},
+        {QStringLiteral("kindText"), mime.comment()},
+        {QStringLiteral("sizeText"), sizeText},
         {QStringLiteral("details"), details},
+        {QStringLiteral("modifiedText"), formatModified(info.lastModified())},
+        {QStringLiteral("appName"), app ? app->name() : QString()},
+        {QStringLiteral("appIcon"), app ? app->icon() : QString()},
         {QStringLiteral("cornerRadius"), CornerRadius},
     };
 }
@@ -186,6 +242,8 @@ void Previewer::show(const QString &path, bool activate)
                       siblings.size() > 1 && index >= 0 ? QStringLiteral("%1 / %2").arg(index + 1).arg(siblings.size())
                                                         : QString());
     m_currentPath = info.canonicalFilePath().isEmpty() ? info.absoluteFilePath() : info.canonicalFilePath();
+    if (info.isDir())
+        summariseFolder(m_currentPath);
 
     // A layer-shell (passive) window can't become a normal one or vice versa,
     // so a change of mode means a fresh window.
@@ -262,6 +320,18 @@ void Previewer::show(const QString &path, bool activate)
         window->requestActivate();
     Q_EMIT ShowingChanged(true);
     qCDebug(lcKlook) << "shown" << m_currentPath;
+}
+
+void Previewer::summariseFolder(const QString &path)
+{
+    auto *watcher = new QFutureWatcher<FolderSummary>(this);
+    connect(watcher, &QFutureWatcher<FolderSummary>::finished, this, [this, watcher, path] {
+        watcher->deleteLater();
+        // The user may have moved on to another file meanwhile.
+        if (m_window && m_currentPath == path)
+            m_window->setProperty("details", folderDetails(watcher->result()));
+    });
+    watcher->setFuture(QtConcurrent::run(summarise, path));
 }
 
 void Previewer::releaseMemory()

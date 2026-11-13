@@ -16,6 +16,9 @@ Item {
 
     readonly property int pageMargin: 16
 
+    readonly property string info: doc.status === PdfDocument.Ready
+        ? (doc.pageCount === 1 ? qsTr("1 page") : qsTr("%1 pages").arg(doc.pageCount)) : ""
+
     signal failed()
 
     PdfDocument {
