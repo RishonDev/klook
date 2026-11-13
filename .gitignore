@@ -7,3 +7,4 @@ packaging/arch/src/
 packaging/arch/pkg/
 packaging/arch/*.pkg.tar.*
 packaging/arch/dolphin-*.tar.xz*
+graphify-out/
