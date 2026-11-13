@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: 2026 Rishon Jonathan R
+# SPDX-License-Identifier: CC0-1.0
+#
+# Builds klook warning-free on Arch Linux, smoke-tests every preview, checks the scripts.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and smoke test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container: archlinux:latest
+    steps:
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm --needed git base-devel cmake ninja dbus glib2 \
+              qt6-base qt6-declarative qt6-multimedia qt6-svg qt6-webengine \
+              karchive kdbusaddons kwindowsystem layer-shell-qt syntax-highlighting
+
+      - uses: actions/checkout@v5
+
+      - name: Configure
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-Wall -Wextra -Werror"
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Smoke test
+        run: dbus-run-session -- tests/smoke.sh build/klook
+
+  lint:
+    name: Scripts and patch
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Shell scripts (shellcheck)
+        run: shellcheck --severity=warning dolphin/apply.sh tests/smoke.sh packaging/arch/*.sh
+
+      - name: The Dolphin patch applies to the pinned release
+        run: |
+          ver=$(sed -n 's/^_dolphinver=//p' packaging/arch/PKGBUILD)
+          curl -sSfL --retry 4 "https://download.kde.org/stable/release-service/$ver/src/dolphin-$ver.tar.xz" | tar -xJ
+          dolphin/apply.sh "dolphin-$ver"

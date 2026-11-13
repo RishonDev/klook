@@ -1,0 +1,80 @@
+# SPDX-FileCopyrightText: 2026 Rishon Jonathan R
+# SPDX-License-Identifier: CC0-1.0
+#
+# Follows Arch's dolphin: when it changes, carries the Quick Look patch over
+# (3-way rebase if needed), proves the packages build, commits to main and
+# republishes the repository. Opens an issue when the patch needs a human.
+name: Dolphin update
+
+on:
+  schedule:
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write # commit the update
+  actions: write # start packages.yml (pushes by GITHUB_TOKEN don't trigger workflows)
+  issues: write # report a patch that no longer applies
+
+jobs:
+  update:
+    name: Follow Arch's dolphin
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    container: archlinux:latest
+    steps:
+      - name: Install tools
+        run: pacman -Syu --noconfirm --needed git base-devel sudo github-cli
+
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Check for a new dolphin
+        id: check
+        run: |
+          git config --global --add safe.directory "$PWD"
+          set +e
+          packaging/arch/update-dolphin.sh > summary.txt
+          status=$?
+          set -e
+          cat summary.txt
+          case $status in
+          0) echo "updated=true" >> "$GITHUB_OUTPUT" ;;
+          3) echo "updated=false" >> "$GITHUB_OUTPUT" ;;
+          *) exit "$status" ;;
+          esac
+
+      - name: Prove the packages still build and work
+        if: steps.check.outputs.updated == 'true'
+        run: packaging/arch/build-packages.sh out
+
+      - name: Commit and publish
+        if: steps.check.outputs.updated == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packaging/arch/PKGBUILD dolphin/patches
+          git commit -q -F summary.txt
+          git push origin HEAD:main
+          gh workflow run packages.yml --ref main
+
+      - name: Report a patch that needs attention
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Dolphin update needs attention"
+          body=$( { [[ -f packaging/arch/update-failure.md ]] && cat packaging/arch/update-failure.md || echo "The Dolphin update failed."; echo; echo "Run: $RUN_URL"; } )
+          number=$(gh issue list --state open --search "in:title \"$title\"" --json number -q '.[0].number')
+          if [[ -n $number ]]; then
+              gh issue comment "$number" --body "$body"
+          else
+              gh issue create --title "$title" --body "$body"
+          fi

@@ -1,0 +1,95 @@
+# SPDX-FileCopyrightText: 2026 Rishon Jonathan R
+# SPDX-License-Identifier: CC0-1.0
+#
+# Builds, signs and tests klook + dolphin-klook, and publishes them as a pacman
+# repository on the "repo" release, so users just run `pacman -Syu`:
+#
+#   [klook]
+#   Server = https://github.com/RishonDev/klook/releases/download/repo
+name: Packages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "qml/**"
+      - "data/**"
+      - "dolphin/**"
+      - "packaging/arch/**"
+      - "tests/**"
+      - "CMakeLists.txt"
+      - ".github/workflows/packages.yml"
+  # Also started by dolphin-update.yml after it commits a new Dolphin version.
+  workflow_dispatch:
+
+# One publish at a time, newest last; never cancel a half-uploaded repository.
+concurrency:
+  group: packages
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Build, test and publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    container: archlinux:latest
+    steps:
+      - name: Install build tools
+        run: pacman -Syu --noconfirm --needed git base-devel sudo github-cli
+
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0 # pkgver counts commits
+
+      - name: Build, install and smoke test
+        env:
+          REPO_GPG_KEY: ${{ secrets.REPO_GPG_KEY }}
+        run: |
+          git config --global --add safe.directory "$PWD"
+          packaging/arch/build-packages.sh out
+
+      - name: Make the repository database
+        env:
+          REPO_GPG_KEY: ${{ secrets.REPO_GPG_KEY }}
+        run: |
+          cd out
+          sign=()
+          if [[ -n $REPO_GPG_KEY ]]; then
+              gpg --batch --import <<< "$REPO_GPG_KEY"
+              sign=(--sign --key "$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/{print $10; exit}')")
+          fi
+          repo-add "${sign[@]}" klook.db.tar.gz ./*.pkg.tar.zst
+          # Release assets can't be symlinks: publish the real files under pacman's names.
+          for f in klook.db klook.files; do
+              cp --remove-destination "$(readlink -f "$f.tar.gz")" "$f"
+              if [[ -f $f.tar.gz.sig ]]; then
+                  cp --remove-destination "$(readlink -f "$f.tar.gz.sig")" "$f.sig"
+              fi
+          done
+          rm -f ./*.tar.gz ./*.tar.gz.sig ./*.old ./*.old.sig
+          ls -l
+
+      - name: Publish to the "repo" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          cd out
+          if ! gh release view repo > /dev/null 2>&1; then
+              notes=$(printf '%s\n' \
+                  "pacman repository for klook and dolphin-klook, rebuilt automatically on every change and every Dolphin update." \
+                  "" "Add to /etc/pacman.conf:" "" '```' "[klook]" \
+                  "Server = https://github.com/$GH_REPO/releases/download/repo" '```' "" \
+                  "and trust the signing key as described in the README.")
+              gh release create repo --latest=false --title "Arch Linux repository" --notes "$notes"
+          fi
+          gh release upload repo --clobber -- *
+          # Drop packages from earlier builds, so the release mirrors the database.
+          gh release view repo --json assets -q '.assets[].name' | while read -r asset; do
+              [[ -e $asset ]] || gh release delete-asset repo "$asset" --yes
+          done

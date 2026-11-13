@@ -16,18 +16,35 @@ selection in Dolphin moves the preview with it, just like Finder on macOS.
 
 ## Install (Arch / CachyOS)
 
+CI builds, tests and signs the packages and publishes them as a pacman
+repository, following every Dolphin update in Arch automatically. Trust the
+signing key once and add the repository:
+
 ```sh
-cd packaging/arch
-makepkg -si
+curl -sSfL https://raw.githubusercontent.com/RishonDev/klook/main/packaging/arch/klook-repo.asc | sudo pacman-key --add -
+sudo pacman-key --lsign-key E1A8E5EB60CE8F11551622F789A34CA872C8E36E
+printf '\n[klook]\nServer = https://github.com/RishonDev/klook/releases/download/repo\n' | sudo tee -a /etc/pacman.conf
+sudo pacman -Sy klook dolphin-klook
 ```
 
-This builds two packages:
+From then on `pacman -Syu` keeps both up to date. To build locally instead:
+`cd packaging/arch && makepkg -si`.
+
+There are two packages:
 
 - **klook**: the previewer. It starts in the background at login so the first
   preview is instant too (about 30 MB of RAM).
 - **dolphin-klook**: Dolphin with a *Quick Look* action on Space. It replaces
-  the `dolphin` package; rebuild it when Dolphin updates. The patch lives in
-  `dolphin/patches/`, and `dolphin/apply.sh` picks the newest one that fits.
+  the `dolphin` package. The patch lives in `dolphin/patches/`, and
+  `dolphin/apply.sh` picks the newest one that fits.
+
+### Automation
+
+| Workflow | When | What |
+|---|---|---|
+| CI | every push / PR | warning-free build, smoke test of every preview, shellcheck, patch applies |
+| Dolphin update | every 6 hours | follows Arch's `dolphin`; carries the patch over (3-way rebase if needed), proves the packages build, commits to main. Opens an issue if the patch needs a human |
+| Packages | every change on main | builds, signs, installs and smoke-tests the packages, then republishes the repository |
 
 Dolphin's own Space shortcut (selection mode) moves to the toolbar's *Select*
 button; give it another key in *Settings → Configure Keyboard Shortcuts* if you
