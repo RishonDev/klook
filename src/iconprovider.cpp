@@ -14,7 +14,13 @@ QPixmap IconProvider::requestPixmap(const QString &id, QSize *size, const QSize 
     if (icon.isNull())
         icon = QIcon::fromTheme(QStringLiteral("unknown"));
 
-    const QPixmap pixmap = icon.pixmap(target);
+    QPixmap pixmap = icon.pixmap(target);
+    // No icon theme at all (minimal systems, headless tests): a transparent
+    // placeholder keeps the layout intact instead of a QML load error.
+    if (pixmap.isNull()) {
+        pixmap = QPixmap(target);
+        pixmap.fill(Qt::transparent);
+    }
     if (size)
         *size = pixmap.size();
     return pixmap;

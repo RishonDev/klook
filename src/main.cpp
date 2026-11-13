@@ -90,7 +90,7 @@ int main(int argc, char *argv[])
 
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("klook"));
-    app.setApplicationVersion(QStringLiteral("0.4.0"));
+    app.setApplicationVersion(QStringLiteral(KLOOK_VERSION));
     app.setOrganizationDomain(QStringLiteral("kde.org")); // D-Bus name: org.kde.klook
     app.setDesktopFileName(QStringLiteral("klook"));
     // Stay resident after the preview closes so the next one opens instantly.

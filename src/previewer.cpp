@@ -3,6 +3,7 @@
 #include <QCollator>
 #include <QDir>
 #include <QFileInfo>
+#include <QGuiApplication>
 #include <QTimer>
 #include <QIcon>
 #include <QLoggingCategory>
@@ -128,7 +129,9 @@ void Previewer::navigate(int delta)
     // Stop at the ends of the folder rather than wrapping, like Quick Look.
     if (index < 0 || target < 0 || target >= siblings.size())
         return;
-    show(siblings.at(target));
+    // Keep the window's mode: stepping through a passive (file-manager driven)
+    // preview must not suddenly take focus.
+    show(siblings.at(target), !m_windowPassive);
 }
 
 const QStringList &Previewer::siblingsOf(const QString &path)
@@ -216,7 +219,7 @@ void Previewer::show(const QString &path, bool activate)
     m_window = window;
     m_windowPassive = !activate;
 
-    if (!activate) {
+    if (!activate && QGuiApplication::platformName() == u"wayland") {
         // On Wayland the only reliable way to show a window without taking
         // keyboard focus is a layer-shell surface with no keyboard interactivity
         // (KWin ignores Qt::WindowDoesNotAcceptFocus for normal toplevels).

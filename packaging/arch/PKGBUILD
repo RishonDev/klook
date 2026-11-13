@@ -5,11 +5,14 @@
 pkgbase=klook
 pkgname=(klook dolphin-klook)
 pkgver=0.4.0
+# Arch's dolphin version this patch set is built from; CI (dolphin-update.yml) keeps it current.
 _dolphinver=26.08.3
+_dolphinrel=1
 pkgrel=1
 arch=(x86_64 aarch64)
 url='https://github.com/RishonDev/klook'
 license=(GPL-2.0-or-later LGPL-2.0-or-later)
+options=(!debug)
 makedepends=(cmake extra-cmake-modules ninja
              # klook
              karchive kdbusaddons kwindowsystem layer-shell-qt qt6-base qt6-declarative syntax-highlighting
@@ -26,6 +29,14 @@ validpgpkeys=(CA262C6C83DE4D2FB28A332A3A6A4DB839EAA6D7  # Albert Astals Cid <aac
 
 # This PKGBUILD lives in packaging/arch/ so makepkg's src/ and pkg/ never touch the project's own src/.
 _root=$(realpath "$startdir/../..")
+
+# <CMake project version>.r<commits>.g<hash>: every commit to main, including the
+# automatic Dolphin updates, is a newer package to pacman.
+pkgver() {
+  local base
+  base=$(sed -n 's/^project(klook VERSION \([0-9.]*\).*/\1/p' "$_root/CMakeLists.txt")
+  printf '%s.r%s.g%s' "$base" "$(git -C "$_root" rev-list --count HEAD)" "$(git -C "$_root" rev-parse --short=7 HEAD)"
+}
 
 prepare() {
   "$_root/dolphin/apply.sh" dolphin-$_dolphinver
