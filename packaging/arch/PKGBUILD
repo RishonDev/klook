@@ -32,7 +32,8 @@ prepare() {
 }
 
 build() {
-  cmake -B klook-build -S "$_root" -G Ninja -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=RelWithDebInfo
+  cmake -B klook-build -S "$_root" -G Ninja -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    -DKLOOK_AUTOSTART=ON
   cmake --build klook-build
 
   cmake -B dolphin-build -S dolphin-$_dolphinver -G Ninja -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTING=OFF
@@ -49,6 +50,7 @@ package_klook() {
               'qqc2-desktop-style: native Plasma look for buttons and scrollbars')
 
   DESTDIR="$pkgdir" cmake --install klook-build
+  install -Dm644 "$_root/LICENSE" -t "$pkgdir/usr/share/licenses/$pkgname"
 }
 
 package_dolphin-klook() {
