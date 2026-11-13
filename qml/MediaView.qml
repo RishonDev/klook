@@ -59,8 +59,11 @@ Item {
         onClicked: player.playbackState === MediaPlayer.PlayingState ? player.pause() : player.play()
     }
 
-    // Minimal transport bar.
+    // Minimal transport bar; fades with the header when controls auto-hide.
     RowLayout {
+        opacity: !Window.window || Window.window.controlsShown ? 1 : 0
+        visible: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: 220 } }
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom

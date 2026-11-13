@@ -14,6 +14,7 @@
 #include <QLocale>
 #include <QMimeDatabase>
 #include <QQmlComponent>
+#include <QQmlProperty>
 #include <QQuickWindow>
 #include <QRegion>
 #include <QUrl>
@@ -33,8 +34,6 @@
 Q_LOGGING_CATEGORY(lcKlook, "klook", QtWarningMsg)
 
 namespace {
-
-constexpr int CornerRadius = 14;
 
 // Which QML view renders this file.
 QString kindFor(const QMimeType &mime)
@@ -135,7 +134,6 @@ QVariantMap propertiesFor(const QFileInfo &info)
         {QStringLiteral("modifiedText"), formatModified(info.lastModified())},
         {QStringLiteral("appName"), app ? app->name() : QString()},
         {QStringLiteral("appIcon"), app ? app->icon() : QString()},
-        {QStringLiteral("cornerRadius"), CornerRadius},
     };
 }
 
@@ -171,8 +169,19 @@ void Previewer::Show(const QString &path, bool activate)
 
 void Previewer::close()
 {
+    // dismiss() animates out first when the open/close animation is on.
     if (m_window)
-        m_window->close();
+        QMetaObject::invokeMethod(m_window, "dismiss");
+}
+
+void Previewer::updateBlur()
+{
+    QQuickWindow *window = m_window;
+    if (!window)
+        return;
+    const bool active = window->property("blurActive").toBool();
+    const int radius = window->property("cornerRadius").toInt();
+    KWindowEffects::enableBlurBehind(window, active, active ? roundedRegion(window->size(), radius) : QRegion());
 }
 
 void Previewer::navigate(int delta)
@@ -291,11 +300,10 @@ void Previewer::show(const QString &path, bool activate)
         }
     }
 
-    const auto applyBlur = [window] {
-        KWindowEffects::enableBlurBehind(window, true, roundedRegion(window->size(), CornerRadius));
-    };
-    connect(window, &QWindow::widthChanged, window, applyBlur);
-    connect(window, &QWindow::heightChanged, window, applyBlur);
+    connect(window, &QWindow::widthChanged, this, &Previewer::updateBlur);
+    connect(window, &QWindow::heightChanged, this, &Previewer::updateBlur);
+    QQmlProperty(window, QStringLiteral("cornerRadius")).connectNotifySignal(this, SLOT(updateBlur()));
+    QQmlProperty(window, QStringLiteral("blurActive")).connectNotifySignal(this, SLOT(updateBlur()));
     connect(window, SIGNAL(navigate(int)), this, SLOT(navigate(int)));
 
     // QML calls close(); tear the window down once it is hidden.
@@ -313,7 +321,19 @@ void Previewer::show(const QString &path, bool activate)
     });
 
     window->show();
-    applyBlur();
+    updateBlur();
+    QMetaObject::invokeMethod(window, "present");
+
+    // Test hook: KLOOK_SNAPSHOT=<png> renders the window to a file after
+    // KLOOK_SNAPSHOT_DELAY ms (default 1500), so tests can check how a preview
+    // looks without screenshots of the user's desktop (works offscreen too).
+    if (const QString snapshot = qEnvironmentVariable("KLOOK_SNAPSHOT"); !snapshot.isEmpty()) {
+        const int delay = qEnvironmentVariableIntegerValue("KLOOK_SNAPSHOT_DELAY").value_or(1500);
+        QTimer::singleShot(delay, window, [window, snapshot] {
+            const bool saved = window->grabWindow().save(snapshot);
+            qCDebug(lcKlook) << "snapshot" << snapshot << saved;
+        });
+    }
     // Without a request (and without an activation token) KWin leaves focus
     // where it is, which is what a file manager driving us wants.
     if (activate)

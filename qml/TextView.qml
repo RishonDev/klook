@@ -30,8 +30,9 @@ Item {
                 textFormat: TextEdit.PlainText
                 wrapMode: TextEdit.NoWrap
                 font.family: "monospace"
-                leftPadding: 14
-                rightPadding: 14
+                leftPadding: Settings.polishedText ? 20 : 14
+                rightPadding: leftPadding
+                topPadding: Settings.polishedText ? 14 : 6
                 background: null
                 text: file.text
             }

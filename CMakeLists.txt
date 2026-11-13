@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(klook VERSION 0.4.0 LANGUAGES CXX)
+project(klook VERSION 0.5.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -10,6 +10,7 @@ find_package(KF6SyntaxHighlighting REQUIRED)
 find_package(KF6Archive REQUIRED)
 find_package(KF6DBusAddons REQUIRED)
 find_package(KF6Service REQUIRED)
+find_package(KF6Config REQUIRED)
 find_package(LayerShellQt REQUIRED)
 
 qt_standard_project_setup(REQUIRES 6.8)
@@ -37,6 +38,8 @@ qt_add_qml_module(klook
         src/highlighter.h src/highlighter.cpp
         src/textfile.h src/textfile.cpp
         src/archivemodel.h src/archivemodel.cpp
+        src/settings.h src/settings.cpp
+        src/markdownpolish.h src/markdownpolish.cpp
 )
 
 target_include_directories(klook PRIVATE src)
@@ -44,7 +47,7 @@ target_compile_definitions(klook PRIVATE KLOOK_VERSION="${PROJECT_VERSION}")
 
 target_link_libraries(klook PRIVATE
     Qt6::Gui Qt6::Quick Qt6::DBus Qt6::Concurrent
-    KF6::WindowSystem KF6::SyntaxHighlighting KF6::Archive KF6::DBusAddons KF6::Service
+    KF6::WindowSystem KF6::SyntaxHighlighting KF6::Archive KF6::DBusAddons KF6::Service KF6::ConfigCore
     LayerShellQt::Interface
 )
 

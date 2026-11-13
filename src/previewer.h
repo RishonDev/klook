@@ -44,6 +44,8 @@ Q_SIGNALS:
 private Q_SLOTS:
     // Previous (-1) / next (+1) file in the current file's folder.
     void navigate(int delta);
+    // Blur behind the window, matching its rounded corners (or off mid-animation).
+    void updateBlur();
 
 private:
     void show(const QString &path, bool activate = true);

@@ -5,6 +5,7 @@
 #include <QDBusMessage>
 #include <QDir>
 #include <QGuiApplication>
+#include <QThread>
 
 #include <unistd.h>
 
@@ -66,6 +67,13 @@ bool forwardToRunningInstance(int argc, char *argv[], int *exitCode)
         return false; // instance vanished or misbehaved; start a fresh one
 
     *exitCode = reply.arguments().value(0).toInt();
+
+    // --quit returns only once the instance has left the bus, so
+    // `klook --quit && klook --daemon` can't hand its arguments to a dying one.
+    if (arguments.contains(u"--quit")) {
+        for (int i = 0; i < 150 && bus.interface()->isServiceRegistered(ServiceName); ++i)
+            QThread::msleep(20);
+    }
     return true;
 }
 
