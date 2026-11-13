@@ -1,0 +1,237 @@
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index 319c551..b321500 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -292,6 +292,7 @@ target_sources(dolphinstatic PRIVATE
+     dolphinbookmarkhandler.cpp
+     dolphindockwidget.cpp
+     dolphinmainwindow.cpp
++    quicklook.cpp
+     dolphinviewcontainer.cpp
+     dolphincontextmenu.cpp
+     dolphinnavigatorswidgetaction.cpp
+diff --git a/src/dolphinmainwindow.cpp b/src/dolphinmainwindow.cpp
+index c8e7e5f..1313025 100644
+--- a/src/dolphinmainwindow.cpp
++++ b/src/dolphinmainwindow.cpp
+@@ -21,6 +21,7 @@
+ #include "dolphintabpage.h"
+ #include "dolphinurlnavigatorscontroller.h"
+ #include "dolphinviewcontainer.h"
++#include "quicklook.h"
+ #include "global.h"
+ #include "middleclickactioneventfilter.h"
+ #include "panels/folders/folderspanel.h"
+@@ -404,6 +405,7 @@ void DolphinMainWindow::slotEditableStateChanged(bool editable)
+ void DolphinMainWindow::slotSelectionChanged(const KFileItemList &selection)
+ {
+     updateFileAndEditActions();
++    m_quickLook->followSelection(selection);
+ 
+     if (m_fileItemActions) {
+         if (selection.count() > 0) {
+@@ -1975,7 +1977,8 @@ void DolphinMainWindow::setupActions()
+         "</para>"));
+     toggleSelectionModeAction->setIcon(QIcon::fromTheme(QStringLiteral("quickwizard")));
+     toggleSelectionModeAction->setCheckable(true);
+-    actionCollection()->setDefaultShortcut(toggleSelectionModeAction, Qt::Key_Space);
++    // Space belongs to Quick Look (below), as in Finder. Selection mode stays on the
++    // toolbar's Select button and can be given a key in the shortcut settings.
+     connect(toggleSelectionModeAction, &QAction::triggered, this, &DolphinMainWindow::toggleSelectionMode);
+ 
+     // A special version of the toggleSelectionModeAction for the toolbar that also contains a menu
+@@ -2165,6 +2168,18 @@ void DolphinMainWindow::setupActions()
+                                     "has their own <filename>Home</filename> that contains their personal files, "
+                                     "as well as hidden folders for their applications' data and configuration files."));
+ 
++    // Quick Look: Space previews the selection with klook, like in Finder
++    m_quickLook = new QuickLook(this);
++    QAction *quickLook = actionCollection()->addAction(QStringLiteral("quick_look"));
++    quickLook->setText(i18nc("@action:inmenu File", "Quick Look"));
++    quickLook->setIcon(QIcon::fromTheme(QStringLiteral("document-preview")));
++    quickLook->setWhatsThis(i18nc("@info:whatsthis", "Shows a quick preview of the selected item. "
++                                  "While it is open, the preview follows the selection."));
++    actionCollection()->setDefaultShortcut(quickLook, Qt::Key_Space);
++    connect(quickLook, &QAction::triggered, this, [this]() {
++        m_quickLook->toggle(m_activeViewContainer->view()->selectedItems());
++    });
++
+     // setup 'Tools' menu
+     QAction *compareFiles = actionCollection()->addAction(QStringLiteral("compare_files"));
+     compareFiles->setText(i18nc("@action:inmenu Tools", "Compare Files"));
+diff --git a/src/dolphinmainwindow.h b/src/dolphinmainwindow.h
+index 50e944f..1c02d41 100644
+--- a/src/dolphinmainwindow.h
++++ b/src/dolphinmainwindow.h
+@@ -45,6 +45,7 @@ class KFileItemList;
+ class KJob;
+ class KNewFileMenu;
+ class KRecentFilesAction;
++class QuickLook;
+ class KToolBarPopupAction;
+ class QToolButton;
+ class PlacesPanel;
+@@ -803,6 +804,7 @@ private:
+     KConfigWatcher::Ptr m_serviceMenuConfigWatcher;
+     KFileItemActions *m_fileItemActions = nullptr;
+     ServiceMenuShortcutManager *m_serviceMenuShortcutManager = nullptr;
++    QuickLook *m_quickLook = nullptr;
+ 
+     QTimer *m_sessionSaveTimer;
+     QFutureWatcher<void> *m_sessionSaveWatcher;
+diff --git a/src/quicklook.cpp b/src/quicklook.cpp
+new file mode 100644
+index 0000000..12ea0e7
+--- /dev/null
++++ b/src/quicklook.cpp
+@@ -0,0 +1,97 @@
++/*
++ * SPDX-FileCopyrightText: 2026 Rishon Jonathan R
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
++#include "quicklook.h"
++
++#include <KFileItem>
++
++#include <QApplication>
++#include <QDBusConnection>
++#include <QDBusConnectionInterface>
++#include <QDBusMessage>
++#include <QKeyEvent>
++#include <QProcess>
++#include <QWidget>
++
++namespace
++{
++const QString klookService = QStringLiteral("org.kde.klook");
++const QString klookPath = QStringLiteral("/Preview");
++const QString klookInterface = QStringLiteral("org.kde.klook.Preview");
++
++void callKlook(const QString &method, const QVariantList &arguments = {})
++{
++    QDBusMessage message = QDBusMessage::createMethodCall(klookService, klookPath, klookInterface, method);
++    message.setArguments(arguments);
++    QDBusConnection::sessionBus().asyncCall(message);
++}
++}
++
++QuickLook::QuickLook(QWidget *window)
++    : QObject(window)
++    , m_window(window)
++{
++    // Keeps m_showing in sync when the preview is closed from klook itself.
++    QDBusConnection::sessionBus()
++        .connect(klookService, klookPath, klookInterface, QStringLiteral("ShowingChanged"), this, SLOT(slotShowingChanged(bool)));
++    qApp->installEventFilter(this);
++}
++
++void QuickLook::toggle(const KFileItemList &selection)
++{
++    if (m_showing) {
++        close();
++    } else if (!selection.isEmpty()) {
++        show(selection.first());
++    }
++}
++
++void QuickLook::followSelection(const KFileItemList &selection)
++{
++    if (m_showing && !selection.isEmpty()) {
++        show(selection.first());
++    }
++}
++
++bool QuickLook::eventFilter(QObject *watched, QEvent *event)
++{
++    if (m_showing && event->type() == QEvent::KeyPress && QApplication::activeWindow() == m_window
++        && static_cast<QKeyEvent *>(event)->key() == Qt::Key_Escape) {
++        close();
++        return true;
++    }
++    return QObject::eventFilter(watched, event);
++}
++
++void QuickLook::slotShowingChanged(bool showing)
++{
++    m_showing = showing;
++}
++
++void QuickLook::show(const KFileItem &item)
++{
++    bool isLocal = false;
++    const QUrl url = item.mostLocalUrl(&isLocal);
++    if (!isLocal) {
++        return;
++    }
++    const QString path = url.toLocalFile();
++
++    if (QDBusConnection::sessionBus().interface()->isServiceRegistered(klookService)) {
++        callKlook(QStringLiteral("Show"), {path, false});
++    } else {
++        QProcess::startDetached(QStringLiteral("klook"), {QStringLiteral("--no-activate"), path});
++    }
++    // Set right away: a freshly started klook may announce itself before the
++    // ShowingChanged subscription has resolved its new bus name.
++    m_showing = true;
++}
++
++void QuickLook::close()
++{
++    callKlook(QStringLiteral("Close"));
++    m_showing = false;
++}
+diff --git a/src/quicklook.h b/src/quicklook.h
+new file mode 100644
+index 0000000..d964256
+--- /dev/null
++++ b/src/quicklook.h
+@@ -0,0 +1,47 @@
++/*
++ * SPDX-FileCopyrightText: 2026 Rishon Jonathan R
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
++#ifndef QUICKLOOK_H
++#define QUICKLOOK_H
++
++#include <QObject>
++
++class KFileItem;
++class KFileItemList;
++class QWidget;
++
++/**
++ * Quick Look for Dolphin, backed by klook (https://github.com/RishonDev/klook).
++ *
++ * Space toggles a preview of the selected item. While it is open, the preview
++ * follows the selection, so the arrow keys keep working in the view as usual,
++ * and Escape closes it. klook shows the preview without taking keyboard focus.
++ */
++class QuickLook : public QObject
++{
++    Q_OBJECT
++
++public:
++    explicit QuickLook(QWidget *window);
++
++    void toggle(const KFileItemList &selection);
++    void followSelection(const KFileItemList &selection);
++
++protected:
++    bool eventFilter(QObject *watched, QEvent *event) override;
++
++private Q_SLOTS:
++    void slotShowingChanged(bool showing);
++
++private:
++    void show(const KFileItem &item);
++    void close();
++
++    QWidget *m_window;
++    bool m_showing = false;
++};
++
++#endif

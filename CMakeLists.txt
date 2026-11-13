@@ -9,6 +9,7 @@ find_package(KF6WindowSystem REQUIRED)
 find_package(KF6SyntaxHighlighting REQUIRED)
 find_package(KF6Archive REQUIRED)
 find_package(KF6DBusAddons REQUIRED)
+find_package(LayerShellQt REQUIRED)
 
 qt_standard_project_setup(REQUIRES 6.8)
 
@@ -42,6 +43,7 @@ target_include_directories(klook PRIVATE src)
 target_link_libraries(klook PRIVATE
     Qt6::Gui Qt6::Quick Qt6::DBus
     KF6::WindowSystem KF6::SyntaxHighlighting KF6::Archive KF6::DBusAddons
+    LayerShellQt::Interface
 )
 
 include(GNUInstallDirs)

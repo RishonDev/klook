@@ -1,0 +1,77 @@
+# klook, Quick Look for KDE Plasma, in one build: `makepkg -si` (from packaging/arch) installs both packages.
+#   klook          the previewer: frameless popup for images, text/code, PDF, media, archives
+#   dolphin-klook  Dolphin with Quick Look: Space previews the selection, arrows follow it
+
+pkgbase=klook
+pkgname=(klook dolphin-klook)
+pkgver=0.4.0
+_dolphinver=26.08.3
+pkgrel=1
+arch=(x86_64 aarch64)
+url='https://github.com/RishonDev/klook'
+license=(GPL-2.0-or-later LGPL-2.0-or-later)
+makedepends=(cmake extra-cmake-modules ninja
+             # klook
+             karchive kdbusaddons kwindowsystem layer-shell-qt qt6-base qt6-declarative syntax-highlighting
+             # dolphin
+             baloo baloo-widgets kbookmarks kcmutils kcodecs kcolorscheme kcompletion kconfig kconfigwidgets
+             kcoreaddons kcrash kdoctools kfilemetadata kguiaddons ki18n kiconthemes kio kjobwidgets knewstuff
+             knotifications kparts kservice ktextwidgets kuserfeedback kwidgetsaddons kxmlgui qt6-multimedia solid)
+source=(https://download.kde.org/stable/release-service/$_dolphinver/src/dolphin-$_dolphinver.tar.xz{,.sig})
+sha256sums=('8d73851ba561f81b9aa27bba53157a59d9eeaa548fd82f0c9c2167b5a7c4a65d'
+            'SKIP')
+validpgpkeys=(CA262C6C83DE4D2FB28A332A3A6A4DB839EAA6D7  # Albert Astals Cid <aacid@kde.org>
+              F23275E4BF10AFC1DF6914A6DBD2CE893E2D1C87  # Christoph Feck <cfeck@kde.org>
+              D81C0CB38EB725EF6691C385BB463350D6EF31EF) # Heiko Becker <heiko.becker@kde.org>
+
+# This PKGBUILD lives in packaging/arch/ so makepkg's src/ and pkg/ never touch the project's own src/.
+_root=$(realpath "$startdir/../..")
+
+prepare() {
+  "$_root/dolphin/apply.sh" dolphin-$_dolphinver
+}
+
+build() {
+  cmake -B klook-build -S "$_root" -G Ninja -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=RelWithDebInfo
+  cmake --build klook-build
+
+  cmake -B dolphin-build -S dolphin-$_dolphinver -G Ninja -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTING=OFF
+  cmake --build dolphin-build
+}
+
+package_klook() {
+  pkgdesc='klook: Quick Look style file previews for KDE Plasma'
+  depends=(gcc-libs glibc karchive kdbusaddons kwindowsystem layer-shell-qt qt6-base qt6-declarative syntax-highlighting)
+  optdepends=('dolphin-klook: press Space in Dolphin to preview the selection'
+              'qt6-multimedia: audio and video previews'
+              'qt6-webengine: PDF previews (provides QtPdf)'
+              'qt6-svg: SVG previews'
+              'qqc2-desktop-style: native Plasma look for buttons and scrollbars')
+
+  DESTDIR="$pkgdir" cmake --install klook-build
+}
+
+package_dolphin-klook() {
+  pkgdesc='KDE File Manager, with Quick Look (Space) through klook'
+  depends=(baloo baloo-widgets glibc kbookmarks kcmutils kcodecs kcolorscheme kcompletion kconfig kconfigwidgets
+           kcoreaddons kcrash kdbusaddons kfilemetadata kguiaddons ki18n kiconthemes kio kio-extras kjobwidgets
+           knewstuff knotifications kparts kservice ktextwidgets kuserfeedback kwidgetsaddons kwindowsystem kxmlgui
+           libstdc++ qt6-base qt6-multimedia solid
+           klook)
+  optdepends=('dolphin-plugins: extra plugins'
+              'ffmpegthumbs: video thumbnails'
+              'filelight: detailed disk usage statistics'
+              'kde-cli-tools: for editing file type options'
+              'kdegraphics-thumbnailers: PDF and PS thumbnails'
+              'kdenetwork-filesharing: samba usershare properties menu'
+              'kdf: view disk usage'
+              'kio-admin: for managing files as administrator'
+              'kompare: comparing files menu action'
+              'konsole: terminal panel'
+              'purpose: share context menu')
+  provides=("dolphin=$_dolphinver")
+  conflicts=(dolphin)
+  groups=(kde-applications kde-system)
+
+  DESTDIR="$pkgdir" cmake --install dolphin-build
+}

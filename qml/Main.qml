@@ -15,6 +15,8 @@ Window {
     required property int cornerRadius
     // "3 / 12" within the folder; set by the Previewer.
     property string position: ""
+    // Shown on behalf of a file manager that keeps keyboard focus (see Previewer::Show).
+    property bool passive: false
 
     // Asks the Previewer to show the previous (-1) or next (+1) file in the folder.
     signal navigate(int delta)
@@ -26,9 +28,10 @@ Window {
 
     minimumWidth: 360
     minimumHeight: 240
-    visible: true
+    // The Previewer shows the window once it has set it up (e.g. as a layer surface).
+    visible: false
     title: fileName
-    flags: Qt.Window | Qt.FramelessWindowHint
+    flags: Qt.Window | Qt.FramelessWindowHint | (passive ? Qt.WindowDoesNotAcceptFocus : 0)
     color: "transparent"
 
     // Fit the window to an image's natural size, capped at 80% of the screen.

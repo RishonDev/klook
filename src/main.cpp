@@ -18,6 +18,7 @@ void addOptions(QCommandLineParser &parser)
 {
     parser.addOption({QStringLiteral("daemon"), QStringLiteral("Start in the background without showing a preview.")});
     parser.addOption({QStringLiteral("quit"), QStringLiteral("Stop the running klook instance.")});
+    parser.addOption({QStringLiteral("no-activate"), QStringLiteral("Show the preview without taking keyboard focus.")});
     parser.addOption({QStringLiteral("next"), QStringLiteral("Show the next file in the folder of the open preview.")});
     parser.addOption({QStringLiteral("previous"), QStringLiteral("Show the previous file in the folder of the open preview.")});
     parser.addPositionalArgument(QStringLiteral("file"), QStringLiteral("File to preview"));
@@ -89,7 +90,7 @@ int main(int argc, char *argv[])
 
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("klook"));
-    app.setApplicationVersion(QStringLiteral("0.2.0"));
+    app.setApplicationVersion(QStringLiteral("0.4.0"));
     app.setOrganizationDomain(QStringLiteral("kde.org")); // D-Bus name: org.kde.klook
     app.setDesktopFileName(QStringLiteral("klook"));
     // Stay resident after the preview closes so the next one opens instantly.
@@ -118,6 +119,9 @@ int main(int argc, char *argv[])
         return 0;
 
     Previewer previewer;
+    QDBusConnection::sessionBus().registerObject(QStringLiteral("/Preview"), &previewer,
+                                                 QDBusConnection::ExportScriptableSlots
+                                                     | QDBusConnection::ExportScriptableSignals);
 
     QObject::connect(&service, &KDBusService::activateRequested, &previewer,
                      [&previewer](const QStringList &arguments, const QString &workingDirectory) {
@@ -134,11 +138,11 @@ int main(int argc, char *argv[])
                          }
                          const QString path = fileArgument(forwarded, workingDirectory);
                          if (!path.isEmpty())
-                             previewer.toggle(path);
+                             previewer.toggle(path, !forwarded.isSet(QStringLiteral("no-activate")));
                      });
 
     if (!file.isEmpty())
-        previewer.toggle(file);
+        previewer.toggle(file, !parser.isSet(QStringLiteral("no-activate")));
 
     return app.exec();
 }

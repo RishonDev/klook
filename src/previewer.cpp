@@ -14,6 +14,7 @@
 #include <QUrl>
 
 #include <KWindowEffects>
+#include <LayerShellQt/Window>
 
 #include <malloc.h>
 
@@ -93,7 +94,7 @@ Previewer::Previewer(QObject *parent)
         qCritical().noquote() << "klook: failed to load QML:" << m_component->errorString();
 }
 
-void Previewer::toggle(const QString &path)
+void Previewer::toggle(const QString &path, bool activate)
 {
     // Canonical so "dir/../file" or a symlink still matches the open preview.
     const QFileInfo info(path);
@@ -103,7 +104,12 @@ void Previewer::toggle(const QString &path)
         close();
         return;
     }
-    show(absolute);
+    show(absolute, activate);
+}
+
+void Previewer::Show(const QString &path, bool activate)
+{
+    show(path, activate);
 }
 
 void Previewer::close()
@@ -160,7 +166,7 @@ const QStringList &Previewer::siblingsOf(const QString &path)
     return m_siblings;
 }
 
-void Previewer::show(const QString &path)
+void Previewer::show(const QString &path, bool activate)
 {
     const QFileInfo info(path);
     if (!info.exists()) {
@@ -178,17 +184,28 @@ void Previewer::show(const QString &path)
                                                         : QString());
     m_currentPath = info.canonicalFilePath().isEmpty() ? info.absoluteFilePath() : info.canonicalFilePath();
 
+    // A layer-shell (passive) window can't become a normal one or vice versa,
+    // so a change of mode means a fresh window.
+    if (m_window && m_windowPassive == activate) {
+        m_window->disconnect(this);
+        m_window->close();
+        m_window->deleteLater();
+        m_window = nullptr;
+    }
+
     // Already showing something: swap the file into the same window, so arrow
     // keys and repeated Dolphin requests don't flash a new window each time.
     if (m_window) {
         for (auto it = properties.cbegin(); it != properties.cend(); ++it)
             m_window->setProperty(it.key().toUtf8().constData(), it.value());
         QMetaObject::invokeMethod(m_window, "reload");
-        m_window->requestActivate();
+        if (activate)
+            m_window->requestActivate();
         qCDebug(lcKlook) << "swapped" << m_currentPath;
         return;
     }
 
+    properties.insert(QStringLiteral("passive"), !activate);
     QObject *object = m_component->createWithInitialProperties(properties);
     auto *window = qobject_cast<QQuickWindow *>(object);
     if (!window) {
@@ -197,6 +214,21 @@ void Previewer::show(const QString &path)
         return;
     }
     m_window = window;
+    m_windowPassive = !activate;
+
+    if (!activate) {
+        // On Wayland the only reliable way to show a window without taking
+        // keyboard focus is a layer-shell surface with no keyboard interactivity
+        // (KWin ignores Qt::WindowDoesNotAcceptFocus for normal toplevels).
+        // No anchors = centred on the screen the user is working on.
+        if (auto *layer = LayerShellQt::Window::get(window)) {
+            layer->setLayer(LayerShellQt::Window::LayerTop);
+            layer->setKeyboardInteractivity(LayerShellQt::Window::KeyboardInteractivityNone);
+            layer->setAnchors(LayerShellQt::Window::AnchorNone);
+            layer->setScope(QStringLiteral("klook-preview"));
+            layer->setWantsToBeOnActiveScreen(true);
+        }
+    }
 
     const auto applyBlur = [window] {
         KWindowEffects::enableBlurBehind(window, true, roundedRegion(window->size(), CornerRadius));
@@ -214,13 +246,18 @@ void Previewer::show(const QString &path)
         if (m_window == window) {
             m_currentPath.clear();
             Q_EMIT closed();
+            Q_EMIT ShowingChanged(false);
         }
         releaseMemory();
     });
 
     window->show();
     applyBlur();
-    window->requestActivate();
+    // Without a request (and without an activation token) KWin leaves focus
+    // where it is, which is what a file manager driving us wants.
+    if (activate)
+        window->requestActivate();
+    Q_EMIT ShowingChanged(true);
     qCDebug(lcKlook) << "shown" << m_currentPath;
 }
 
