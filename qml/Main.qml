@@ -61,11 +61,11 @@ Window {
 
     Shortcut {
         sequences: ["Escape", "Space"]
-        onActivated: Qt.quit()
+        onActivated: root.close()
     }
     Shortcut {
         sequences: ["Return", "Enter"]
-        onActivated: { Qt.openUrlExternally(root.fileUrl); Qt.quit(); }
+        onActivated: { Qt.openUrlExternally(root.fileUrl); root.close(); }
     }
 
     Rectangle {
@@ -100,7 +100,7 @@ Window {
                     ToolButton {
                         icon.name: "window-close"
                         display: AbstractButton.IconOnly
-                        onClicked: Qt.quit()
+                        onClicked: root.close()
                         ToolTip.text: qsTr("Close (Esc)")
                         ToolTip.visible: hovered
                     }
@@ -114,7 +114,7 @@ Window {
                     ToolButton {
                         icon.name: "document-open"
                         text: qsTr("Open")
-                        onClicked: { Qt.openUrlExternally(root.fileUrl); Qt.quit(); }
+                        onClicked: { Qt.openUrlExternally(root.fileUrl); root.close(); }
                         ToolTip.text: qsTr("Open with default app (Enter)")
                         ToolTip.visible: hovered
                     }

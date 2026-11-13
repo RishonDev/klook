@@ -4,16 +4,18 @@ project(klook VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Gui Quick)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Gui Quick DBus)
 find_package(KF6WindowSystem REQUIRED)
 find_package(KF6SyntaxHighlighting REQUIRED)
 find_package(KF6Archive REQUIRED)
+find_package(KF6DBusAddons REQUIRED)
 
 qt_standard_project_setup(REQUIRES 6.8)
 
 qt_add_executable(klook
     src/main.cpp
     src/iconprovider.h src/iconprovider.cpp
+    src/previewer.h src/previewer.cpp
 )
 
 qt_add_qml_module(klook
@@ -38,10 +40,15 @@ qt_add_qml_module(klook
 target_include_directories(klook PRIVATE src)
 
 target_link_libraries(klook PRIVATE
-    Qt6::Gui Qt6::Quick
-    KF6::WindowSystem KF6::SyntaxHighlighting KF6::Archive
+    Qt6::Gui Qt6::Quick Qt6::DBus
+    KF6::WindowSystem KF6::SyntaxHighlighting KF6::Archive KF6::DBusAddons
 )
 
 include(GNUInstallDirs)
 install(TARGETS klook RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES klook.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+install(FILES data/klook.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+# KF6 only loads service menus that are executable.
+install(FILES data/klook-servicemenu.desktop
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/kio/servicemenus
+        RENAME klook.desktop
+        PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)

@@ -1,114 +1,136 @@
 #include <QCommandLineParser>
-#include <QFileInfo>
+#include <QCoreApplication>
+#include <QDBusConnection>
+#include <QDBusConnectionInterface>
+#include <QDBusMessage>
+#include <QDir>
 #include <QGuiApplication>
-#include <QIcon>
-#include <QLocale>
-#include <QMimeDatabase>
-#include <QQmlApplicationEngine>
-#include <QQuickWindow>
-#include <QRegion>
-#include <QUrl>
 
-#include <KWindowEffects>
+#include <unistd.h>
 
-#include "archivemodel.h"
-#include "iconprovider.h"
+#include <KDBusService>
+
+#include "previewer.h"
 
 namespace {
 
-// Which QML view renders this file.
-QString kindFor(const QMimeType &mime)
+void addOptions(QCommandLineParser &parser)
 {
-    const QString name = mime.name();
-    if (name == u"application/pdf")
-        return QStringLiteral("pdf");
-    if (name.startsWith(u"image/"))
-        return QStringLiteral("image");
-    if (name.startsWith(u"video/") || name.startsWith(u"audio/"))
-        return QStringLiteral("media");
-    if (ArchiveModel::supports(name))
-        return QStringLiteral("archive");
-    if (mime.inherits(QStringLiteral("text/markdown")))
-        return QStringLiteral("markdown");
-    if (mime.inherits(QStringLiteral("text/plain")))
-        return QStringLiteral("text");
-    return QStringLiteral("other");
+    parser.addOption({QStringLiteral("daemon"), QStringLiteral("Start in the background without showing a preview.")});
+    parser.addOption({QStringLiteral("quit"), QStringLiteral("Stop the running klook instance.")});
+    parser.addPositionalArgument(QStringLiteral("file"), QStringLiteral("File to preview"));
 }
 
-// Rounded-rect region so KWin's blur matches the QML card's corners.
-QRegion roundedRegion(const QSize &size, int r)
+// First positional argument, made absolute against the caller's directory.
+// Used for our own argv and for argv forwarded by a second `klook` over D-Bus.
+QString fileArgument(const QCommandLineParser &parser, const QString &workingDirectory)
 {
-    const QRect rect(QPoint(), size);
-    QRegion region(rect.adjusted(r, 0, -r, 0));
-    region += QRegion(rect.adjusted(0, r, 0, -r));
-    const int d = 2 * r;
-    region += QRegion(QRect(rect.left(), rect.top(), d, d), QRegion::Ellipse);
-    region += QRegion(QRect(rect.right() - d + 1, rect.top(), d, d), QRegion::Ellipse);
-    region += QRegion(QRect(rect.left(), rect.bottom() - d + 1, d, d), QRegion::Ellipse);
-    region += QRegion(QRect(rect.right() - d + 1, rect.bottom() - d + 1, d, d), QRegion::Ellipse);
-    return region;
+    const QStringList positional = parser.positionalArguments();
+    return positional.isEmpty() ? QString() : QDir(workingDirectory).absoluteFilePath(positional.constFirst());
 }
 
-constexpr int CornerRadius = 14;
+const QString ServiceName = QStringLiteral("org.kde.klook");
+
+// Fast path for the common case: klook is already running. A bare
+// QCoreApplication skips the Wayland connection and Plasma theme loading that
+// a QGuiApplication pays for, so handing the file over costs only a D-Bus call.
+// Returns false when no instance is running and we must become it.
+bool forwardToRunningInstance(int argc, char *argv[], int *exitCode)
+{
+    QCoreApplication app(argc, argv);
+    const QStringList arguments = app.arguments();
+    if (arguments.contains(u"--help") || arguments.contains(u"-h") || arguments.contains(u"--version")
+        || arguments.contains(u"-v"))
+        return false;
+
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected() || !bus.interface()->isServiceRegistered(ServiceName))
+        return false;
+
+    // Same call KDBusService::Unique makes, including the Wayland activation
+    // token so the running instance is allowed to focus its window.
+    QVariantMap platformData;
+    const QByteArray token = qgetenv("XDG_ACTIVATION_TOKEN");
+    if (!token.isEmpty())
+        platformData.insert(QStringLiteral("activation-token"), QString::fromUtf8(token));
+
+    QDBusMessage call = QDBusMessage::createMethodCall(ServiceName, QStringLiteral("/org/kde/klook"),
+                                                       QStringLiteral("org.kde.KDBusService"),
+                                                       QStringLiteral("CommandLine"));
+    call << arguments << QDir::currentPath() << platformData;
+    const QDBusMessage reply = bus.call(call);
+    if (reply.type() != QDBusMessage::ReplyMessage)
+        return false; // instance vanished or misbehaved; start a fresh one
+
+    *exitCode = reply.arguments().value(0).toInt();
+    return true;
+}
 
 } // namespace
 
 int main(int argc, char *argv[])
 {
+    // The fast path leaves QtDBus global state bound to its short-lived
+    // QCoreApplication, and a later QGuiApplication can't reuse it (the bus
+    // name registers but calls are never dispatched). So when no instance is
+    // running, re-exec ourselves as a clean server process.
+    constexpr const char *ServerEnv = "KLOOK_SERVER";
+    if (qEnvironmentVariableIsEmpty(ServerEnv)) {
+        int exitCode = 0;
+        if (forwardToRunningInstance(argc, argv, &exitCode))
+            return exitCode;
+        qputenv(ServerEnv, "1");
+        execv("/proc/self/exe", argv);
+        qWarning("klook: re-exec failed, continuing in-process");
+    }
+    qunsetenv(ServerEnv); // don't leak into apps we launch via "Open"
+
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("klook"));
-    app.setApplicationVersion(QStringLiteral("0.1.0"));
+    app.setApplicationVersion(QStringLiteral("0.2.0"));
+    app.setOrganizationDomain(QStringLiteral("kde.org")); // D-Bus name: org.kde.klook
     app.setDesktopFileName(QStringLiteral("klook"));
+    // Stay resident after the preview closes so the next one opens instantly.
+    app.setQuitOnLastWindowClosed(false);
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("Quick Look style file previewer for KDE"));
     parser.addHelpOption();
     parser.addVersionOption();
-    parser.addPositionalArgument(QStringLiteral("file"), QStringLiteral("File to preview"));
+    addOptions(parser);
     parser.process(app);
 
-    if (parser.positionalArguments().isEmpty())
+    const bool quit = parser.isSet(QStringLiteral("quit"));
+    const QString file = fileArgument(parser, QDir::currentPath());
+    if (file.isEmpty() && !quit && !parser.isSet(QStringLiteral("daemon")))
         parser.showHelp(1);
 
-    const QFileInfo info(parser.positionalArguments().constFirst());
-    if (!info.exists()) {
-        qCritical("klook: no such file: %s", qPrintable(info.filePath()));
-        return 1;
-    }
+    // If klook is already running, this forwards our argv to it and exits 0,
+    // so a second `klook` never loads any QML.
+    KDBusService service(KDBusService::Unique);
 
-    const QMimeType mime = QMimeDatabase().mimeTypeForFile(info);
-    const QString details = info.isDir()
-        ? mime.comment()
-        : QStringLiteral("%1 · %2").arg(mime.comment(), QLocale().formattedDataSize(info.size()));
+    // Reaching here means we are the only instance; --quit has nothing to stop.
+    if (quit)
+        return 0;
 
-    QQmlApplicationEngine engine;
-    engine.addImageProvider(QStringLiteral("icon"), new IconProvider);
-    engine.setInitialProperties({
-        {QStringLiteral("filePath"), info.absoluteFilePath()},
-        {QStringLiteral("fileUrl"), QUrl::fromLocalFile(info.absoluteFilePath())},
-        {QStringLiteral("fileName"), info.fileName()},
-        {QStringLiteral("kind"), kindFor(mime)},
-        {QStringLiteral("mimeName"), mime.name()},
-        // Specific icons (e.g. audio-x-vorbis+ogg) are often missing from themes.
-        {QStringLiteral("iconName"), QIcon::hasThemeIcon(mime.iconName()) ? mime.iconName() : mime.genericIconName()},
-        {QStringLiteral("details"), details},
-        {QStringLiteral("cornerRadius"), CornerRadius},
-    });
+    Previewer previewer;
 
-    QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
-                     [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
-    engine.loadFromModule("klook", "Main");
-    if (engine.rootObjects().isEmpty())
-        return 1;
+    QObject::connect(&service, &KDBusService::activateRequested, &previewer,
+                     [&previewer](const QStringList &arguments, const QString &workingDirectory) {
+                         QCommandLineParser forwarded;
+                         addOptions(forwarded);
+                         forwarded.parse(arguments);
+                         if (forwarded.isSet(QStringLiteral("quit"))) {
+                             QCoreApplication::quit();
+                             return;
+                         }
+                         const QString path = fileArgument(forwarded, workingDirectory);
+                         if (!path.isEmpty())
+                             previewer.toggle(path);
+                     });
 
-    if (auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst())) {
-        const auto applyBlur = [window] {
-            KWindowEffects::enableBlurBehind(window, true, roundedRegion(window->size(), CornerRadius));
-        };
-        QObject::connect(window, &QWindow::widthChanged, window, applyBlur);
-        QObject::connect(window, &QWindow::heightChanged, window, applyBlur);
-        applyBlur();
-    }
+    if (!file.isEmpty())
+        previewer.toggle(file);
 
     return app.exec();
 }
