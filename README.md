@@ -50,6 +50,23 @@ Dolphin's own Space shortcut (selection mode) moves to the toolbar's *Select*
 button; give it another key in *Settings → Configure Keyboard Shortcuts* if you
 use it.
 
+## Style: Default or macOS
+
+*System Settings → Apps & Windows → Quick Look* (or `klook --settings`) picks a
+style. Changes apply live, even to a preview that's already open.
+
+| | Default | macOS |
+|---|---|---|
+| Opening/closing | instant | springy zoom and fade |
+| Moving between files | instant | fade |
+| Title bar over images/video | always shown | floats, hides until the mouse moves |
+| Background | dark, solid tint | frosted, with a highlight edge |
+| Markdown | plain | shaded code, airier text, readable line length |
+| Corner radius | 14 | 18 |
+
+Change any single option and the style becomes *Custom*, starting from the
+preset you were on. The choices live in `~/.config/klookrc`.
+
 ## Keys
 
 | In Dolphin | |
@@ -71,6 +88,7 @@ klook FILE           # preview FILE (again on the same file closes it)
 klook --next         # step through the folder of the open preview
 klook --previous
 klook --no-activate FILE   # preview without taking keyboard focus
+klook --settings     # open the Style page in System Settings
 klook --daemon       # start in the background
 klook --quit         # stop the background instance
 ```
@@ -104,6 +122,10 @@ Archive, DBusAddons) and layer-shell-qt. Optional at runtime: QtMultimedia
 (audio/video), QtPdf from qt6-webengine (PDF), qt6-svg.
 
 Debug logging: `QT_LOGGING_RULES="klook.debug=true" QT_FORCE_STDERR_LOGGING=1 klook …`
+
+Tests: `ctest --test-dir build` (settings), `dbus-run-session -- tests/smoke.sh build/klook`
+(every preview offscreen). `KLOOK_SNAPSHOT=out.png [KLOOK_SNAPSHOT_DELAY=ms]` renders
+the preview window to a PNG, to check a look without screenshotting the desktop.
 
 ## License
 

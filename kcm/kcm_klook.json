@@ -1,0 +1,16 @@
+{
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "mithicalaviator85@gmail.com",
+                "Name": "Rishon Jonathan R"
+            }
+        ],
+        "Description": "How file previews look and move",
+        "Icon": "document-preview",
+        "Name": "Quick Look"
+    },
+    "X-KDE-Keywords": "klook,quick look,preview,space,dolphin,animation,macos",
+    "X-KDE-System-Settings-Parent-Category": "applications",
+    "X-KDE-Weight": 80
+}

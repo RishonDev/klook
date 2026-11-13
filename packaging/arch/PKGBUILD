@@ -15,7 +15,8 @@ license=(GPL-2.0-or-later LGPL-2.0-or-later)
 options=(!debug)
 makedepends=(cmake extra-cmake-modules ninja
              # klook
-             karchive kdbusaddons kservice kwindowsystem layer-shell-qt qt6-base qt6-declarative syntax-highlighting
+             karchive kcmutils kconfig kcoreaddons kdbusaddons kservice kwindowsystem layer-shell-qt qt6-base qt6-declarative
+             syntax-highlighting
              # dolphin
              baloo baloo-widgets kbookmarks kcmutils kcodecs kcolorscheme kcompletion kconfig kconfigwidgets
              kcoreaddons kcrash kdoctools kfilemetadata kguiaddons ki18n kiconthemes kio kjobwidgets knewstuff
@@ -44,7 +45,7 @@ prepare() {
 
 build() {
   cmake -B klook-build -S "$_root" -G Ninja -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-    -DKLOOK_AUTOSTART=ON
+    -DKLOOK_AUTOSTART=ON -DBUILD_TESTING=OFF
   cmake --build klook-build
 
   cmake -B dolphin-build -S dolphin-$_dolphinver -G Ninja -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTING=OFF
@@ -53,7 +54,8 @@ build() {
 
 package_klook() {
   pkgdesc='klook: Quick Look style file previews for KDE Plasma'
-  depends=(gcc-libs glibc karchive kdbusaddons kservice kwindowsystem layer-shell-qt qt6-base qt6-declarative syntax-highlighting)
+  depends=(gcc-libs glibc karchive kcmutils kconfig kcoreaddons kdbusaddons kirigami kservice kwindowsystem layer-shell-qt
+           qt6-base qt6-declarative syntax-highlighting)
   optdepends=('dolphin-klook: press Space in Dolphin to preview the selection'
               'qt6-multimedia: audio and video previews'
               'qt6-webengine: PDF previews (provides QtPdf)'

@@ -22,9 +22,10 @@ jobs:
     steps:
       - name: Install dependencies
         run: |
-          pacman -Syu --noconfirm --needed git base-devel cmake ninja dbus glib2 \
+          pacman -Syu --noconfirm --needed git base-devel cmake ninja extra-cmake-modules dbus glib2 \
               qt6-base qt6-declarative qt6-multimedia qt6-svg qt6-webengine \
-              karchive kdbusaddons kservice kwindowsystem layer-shell-qt syntax-highlighting
+              karchive kcmutils kconfig kcoreaddons kdbusaddons kirigami kservice kwindowsystem \
+              layer-shell-qt syntax-highlighting
 
       - uses: actions/checkout@v5
 
@@ -34,8 +35,25 @@ jobs:
       - name: Build
         run: cmake --build build
 
+      - name: Unit tests
+        run: ctest --test-dir build --output-on-failure
+
       - name: Smoke test
         run: dbus-run-session -- tests/smoke.sh build/klook
+
+      - name: System Settings page loads
+        run: |
+          set +e
+          dbus-run-session -- env QT_PLUGIN_PATH="$PWD/build/bin" QT_QPA_PLATFORM=offscreen \
+              QT_FORCE_STDERR_LOGGING=1 timeout 6 kcmshell6 kcm_klook > kcm.log 2>&1
+          status=$?
+          set -e
+          cat kcm.log
+          # It stays open (timeout ends it: 124); any QML error or missing module fails.
+          [[ $status == 124 ]] || { echo "::error::kcmshell6 exited with $status"; exit 1; }
+          if grep -E 'qrc:/kcm/|Could not find|Error loading' kcm.log; then
+              echo "::error::the settings page reported errors"; exit 1
+          fi
 
   lint:
     name: Scripts and patch

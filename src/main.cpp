@@ -5,6 +5,7 @@
 #include <QDBusMessage>
 #include <QDir>
 #include <QGuiApplication>
+#include <QProcess>
 #include <QThread>
 
 #include <unistd.h>
@@ -19,6 +20,7 @@ void addOptions(QCommandLineParser &parser)
 {
     parser.addOption({QStringLiteral("daemon"), QStringLiteral("Start in the background without showing a preview.")});
     parser.addOption({QStringLiteral("quit"), QStringLiteral("Stop the running klook instance.")});
+    parser.addOption({QStringLiteral("settings"), QStringLiteral("Open klook's page in System Settings.")});
     parser.addOption({QStringLiteral("no-activate"), QStringLiteral("Show the preview without taking keyboard focus.")});
     parser.addOption({QStringLiteral("next"), QStringLiteral("Show the next file in the folder of the open preview.")});
     parser.addOption({QStringLiteral("previous"), QStringLiteral("Show the previous file in the folder of the open preview.")});
@@ -43,6 +45,10 @@ bool forwardToRunningInstance(int argc, char *argv[], int *exitCode)
 {
     QCoreApplication app(argc, argv);
     const QStringList arguments = app.arguments();
+    if (arguments.contains(u"--settings")) {
+        *exitCode = QProcess::startDetached(QStringLiteral("systemsettings"), {QStringLiteral("kcm_klook")}) ? 0 : 1;
+        return true;
+    }
     if (arguments.contains(u"--help") || arguments.contains(u"-h") || arguments.contains(u"--version")
         || arguments.contains(u"-v"))
         return false;

@@ -4,6 +4,11 @@ project(klook VERSION 0.5.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# KDE's install layout (before Qt, which would otherwise pull in GNUInstallDirs).
+find_package(ECM 6.0 REQUIRED NO_MODULE)
+list(APPEND CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
+include(KDEInstallDirs)
+
 find_package(Qt6 6.8 REQUIRED COMPONENTS Gui Quick DBus Concurrent)
 find_package(KF6WindowSystem REQUIRED)
 find_package(KF6SyntaxHighlighting REQUIRED)
@@ -24,6 +29,9 @@ qt_add_executable(klook
 qt_add_qml_module(klook
     URI klook
     OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/qml/klook
+    # Imports load at run time; scanning would also pick up the settings page's
+    # Kirigami imports and warn that they can't be linked into klook.
+    NO_IMPORT_SCAN
     VERSION 1.0
     QML_FILES
         qml/Main.qml
@@ -51,9 +59,9 @@ target_link_libraries(klook PRIVATE
     LayerShellQt::Interface
 )
 
-include(GNUInstallDirs)
-install(TARGETS klook RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES data/klook.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+install(TARGETS klook RUNTIME DESTINATION ${KDE_INSTALL_BINDIR})
+install(FILES data/klook.desktop DESTINATION ${KDE_INSTALL_DATADIR}/applications)
+install(FILES data/try-me.md DESTINATION ${KDE_INSTALL_DATADIR}/klook)
 
 # Optionally start the resident instance at login so even the first preview is
 # instant. System installs use XDG autostart; user installs (prefix under $HOME)
@@ -63,12 +71,26 @@ if(KLOOK_AUTOSTART)
     if(CMAKE_INSTALL_PREFIX MATCHES "^$ENV{HOME}")
         set(KLOOK_AUTOSTART_DIR "$ENV{HOME}/.config/autostart")
     else()
-        set(KLOOK_AUTOSTART_DIR "${CMAKE_INSTALL_FULL_SYSCONFDIR}/xdg/autostart")
+        set(KLOOK_AUTOSTART_DIR "${KDE_INSTALL_AUTOSTARTDIR}")
     endif()
     install(FILES data/klook-autostart.desktop DESTINATION ${KLOOK_AUTOSTART_DIR} RENAME klook.desktop)
 endif()
 # KF6 only loads service menus that are executable.
 install(FILES data/klook-servicemenu.desktop
-        DESTINATION ${CMAKE_INSTALL_DATADIR}/kio/servicemenus
+        DESTINATION ${KDE_INSTALL_DATADIR}/kio/servicemenus
         RENAME klook.desktop
         PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+
+option(KLOOK_KCM "Build the System Settings page" ON)
+if(KLOOK_KCM)
+    add_subdirectory(kcm)
+endif()
+
+include(CTest)
+if(BUILD_TESTING)
+    find_package(Qt6 REQUIRED COMPONENTS Test)
+    add_executable(settingstest tests/settingstest.cpp src/settings.cpp src/settings.h)
+    target_include_directories(settingstest PRIVATE src)
+    target_link_libraries(settingstest PRIVATE Qt6::Test Qt6::Qml KF6::ConfigCore)
+    add_test(NAME settings COMMAND settingstest)
+endif()
