@@ -41,6 +41,12 @@ sudo -u builder makepkg -f --noconfirm "${sign[@]}"
 cp ./*.pkg.tar.zst* "$out/"
 
 # Install what we built and test the packaged klook, not the build tree.
+# Signed builds: trust the published repo key first, which also proves the
+# signatures verify exactly as they will on users' machines.
+if [[ -n ${REPO_GPG_KEY:-} ]]; then
+    pacman-key --add "$work/packaging/arch/klook-repo.asc"
+    pacman-key --lsign-key "$(gpg --show-keys --with-colons "$work/packaging/arch/klook-repo.asc" | awk -F: '/^fpr/{print $10; exit}')"
+fi
 pacman -U --noconfirm --ask=4 ./*.pkg.tar.zst # --ask=4: replace the conflicting dolphin
 pacman -S --noconfirm --needed dbus glib2 qt6-svg qt6-webengine
 sudo -u builder dbus-run-session -- "$work/tests/smoke.sh" /usr/bin/klook
