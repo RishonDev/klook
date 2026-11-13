@@ -31,7 +31,7 @@ url=https://download.kde.org/stable/release-service/%s/src/dolphin-%s.tar.xz
 
 if [[ $new_ver != "$current_ver" ]]; then
     printf -v new_url "$url" "$new_ver" "$new_ver"
-    curl -sSfL -o "$work/new.tar.xz" "$new_url"
+    curl -sSfL --retry 4 --retry-all-errors -o "$work/new.tar.xz" "$new_url"
     sha=$(sha256sum "$work/new.tar.xz" | cut -d' ' -f1)
     mkdir "$work/new" && tar -xf "$work/new.tar.xz" -C "$work/new" --strip-components=1
 
@@ -44,7 +44,7 @@ if [[ $new_ver != "$current_ver" ]]; then
         # Carry the patch over with a 3-way merge: old source + patch, rebased
         # onto the new source, exactly like rebasing a branch.
         printf -v old_url "$url" "$current_ver" "$current_ver"
-        curl -sSfL -o "$work/old.tar.xz" "$old_url"
+        curl -sSfL --retry 4 --retry-all-errors -o "$work/old.tar.xz" "$old_url"
         repo=$work/repo
         mkdir "$repo" && tar -xf "$work/old.tar.xz" -C "$repo" --strip-components=1
         git -C "$repo" init -q
@@ -59,6 +59,7 @@ if [[ $new_ver != "$current_ver" ]]; then
         tar -xf "$work/new.tar.xz" -C "$repo" --strip-components=1
         git -C "$repo" -c user.name=ci -c user.email=ci@localhost add -A
         git -C "$repo" -c user.name=ci -c user.email=ci@localhost commit -qm "dolphin $new_ver"
+        git -C "$repo" tag upstream-new
         if ! git -C "$repo" -c user.name=ci -c user.email=ci@localhost cherry-pick patched > "$work/pick.log" 2>&1; then
             {
                 echo "Dolphin $new_ver is in Arch, but the Quick Look patch no longer applies and"
@@ -75,7 +76,7 @@ if [[ $new_ver != "$current_ver" ]]; then
             echo "patch conflicts with dolphin $new_ver" >&2
             exit 1
         fi
-        git -C "$repo" diff new HEAD -- src > "$root/dolphin/patches/$new_ver.patch"
+        git -C "$repo" diff upstream-new HEAD -- src > "$root/dolphin/patches/$new_ver.patch"
         note="the patch was rebased onto $new_ver (dolphin/patches/$new_ver.patch)"
     fi
 
