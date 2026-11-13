@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=klook
+GenericName=Quick Look
+Comment=Quick Look style file previewer
+Exec=klook %f
+Icon=document-preview
+NoDisplay=true
+Terminal=false
+Categories=Utility;

@@ -1,0 +1,55 @@
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import klook
+
+Item {
+    id: view
+
+    property string filePath
+    property url fileUrl
+    property string fileName
+    property string mimeName
+    property string iconName
+    property string details
+
+    ColumnLayout {
+        anchors.fill: parent
+        spacing: 0
+
+        ScrollView {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+
+            TextArea {
+                id: edit
+                readOnly: true
+                // Don't take keyboard focus, so Space/Esc still close the preview.
+                activeFocusOnPress: false
+                selectByMouse: true
+                textFormat: TextEdit.PlainText
+                wrapMode: TextEdit.NoWrap
+                font.family: "monospace"
+                leftPadding: 14
+                rightPadding: 14
+                background: null
+                text: highlighter.text
+            }
+        }
+
+        Label {
+            Layout.fillWidth: true
+            visible: highlighter.truncated
+            padding: 6
+            horizontalAlignment: Text.AlignHCenter
+            opacity: 0.7
+            text: qsTr("Preview truncated to the first 2 MiB")
+        }
+    }
+
+    Highlighter {
+        id: highlighter
+        document: edit.textDocument
+        filePath: view.filePath
+    }
+}
