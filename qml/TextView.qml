@@ -33,13 +33,13 @@ Item {
                 leftPadding: 14
                 rightPadding: 14
                 background: null
-                text: highlighter.text
+                text: file.text
             }
         }
 
         Label {
             Layout.fillWidth: true
-            visible: highlighter.truncated
+            visible: file.truncated
             padding: 6
             horizontalAlignment: Text.AlignHCenter
             opacity: 0.7
@@ -47,8 +47,12 @@ Item {
         }
     }
 
+    TextFile {
+        id: file
+        filePath: view.filePath
+    }
+
     Highlighter {
-        id: highlighter
         document: edit.textDocument
         filePath: view.filePath
     }

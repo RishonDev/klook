@@ -1,6 +1,5 @@
 #include "highlighter.h"
 
-#include <QFile>
 #include <QGuiApplication>
 #include <QStyleHints>
 #include <QTextDocument>
@@ -11,8 +10,6 @@
 #include <KSyntaxHighlighting/Theme>
 
 namespace {
-
-constexpr qint64 MaxBytes = 2 * 1024 * 1024; // previews, not editors
 
 KSyntaxHighlighting::Repository &repository()
 {
@@ -42,17 +39,6 @@ void Highlighter::setFilePath(const QString &path)
         return;
     m_filePath = path;
     Q_EMIT filePathChanged();
-
-    QFile file(path);
-    if (file.open(QIODevice::ReadOnly)) {
-        const QByteArray data = file.read(MaxBytes);
-        m_truncated = file.size() > MaxBytes;
-        m_text = QString::fromUtf8(data);
-    } else {
-        m_truncated = false;
-        m_text = tr("Could not open file: %1").arg(file.errorString());
-    }
-    Q_EMIT textChanged();
     setup();
 }
 

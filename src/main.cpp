@@ -11,6 +11,7 @@
 
 #include <KWindowEffects>
 
+#include "archivemodel.h"
 #include "iconprovider.h"
 
 namespace {
@@ -25,6 +26,10 @@ QString kindFor(const QMimeType &mime)
         return QStringLiteral("image");
     if (name.startsWith(u"video/") || name.startsWith(u"audio/"))
         return QStringLiteral("media");
+    if (ArchiveModel::supports(name))
+        return QStringLiteral("archive");
+    if (mime.inherits(QStringLiteral("text/markdown")))
+        return QStringLiteral("markdown");
     if (mime.inherits(QStringLiteral("text/plain")))
         return QStringLiteral("text");
     return QStringLiteral("other");

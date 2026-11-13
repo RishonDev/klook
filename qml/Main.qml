@@ -19,8 +19,9 @@ Window {
     readonly property int maxWidth: Math.round(Screen.desktopAvailableWidth * 0.8)
     readonly property int maxHeight: Math.round(Screen.desktopAvailableHeight * 0.8)
 
-    width: kind === "other" ? 520 : 960
-    height: kind === "other" ? 360 : 680
+    // Starting size per view; images refit once their size is known.
+    width: kind === "other" ? 520 : kind === "pdf" ? 820 : kind === "archive" ? 640 : 960
+    height: kind === "other" ? 360 : kind === "pdf" ? maxHeight : 680
     minimumWidth: 360
     minimumHeight: 240
     visible: true
@@ -43,6 +44,8 @@ Window {
         case "image": return "ImageView.qml";
         case "text":  return "TextView.qml";
         case "pdf":   return "PdfView.qml";
+        case "markdown": return "MarkdownView.qml";
+        case "archive":  return "ArchiveView.qml";
         case "media": return "MediaView.qml";
         default:      return "OtherView.qml";
         }

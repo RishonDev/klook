@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(Qt6 6.8 REQUIRED COMPONENTS Gui Quick)
 find_package(KF6WindowSystem REQUIRED)
 find_package(KF6SyntaxHighlighting REQUIRED)
+find_package(KF6Archive REQUIRED)
 
 qt_standard_project_setup(REQUIRES 6.8)
 
@@ -26,15 +27,19 @@ qt_add_qml_module(klook
         qml/PdfView.qml
         qml/MediaView.qml
         qml/OtherView.qml
+        qml/MarkdownView.qml
+        qml/ArchiveView.qml
     SOURCES
         src/highlighter.h src/highlighter.cpp
+        src/textfile.h src/textfile.cpp
+        src/archivemodel.h src/archivemodel.cpp
 )
 
 target_include_directories(klook PRIVATE src)
 
 target_link_libraries(klook PRIVATE
     Qt6::Gui Qt6::Quick
-    KF6::WindowSystem KF6::SyntaxHighlighting
+    KF6::WindowSystem KF6::SyntaxHighlighting KF6::Archive
 )
 
 include(GNUInstallDirs)
