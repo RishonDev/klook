@@ -44,6 +44,7 @@ cp ./*.pkg.tar.zst* "$out/"
 # Signed builds: trust the published repo key first, which also proves the
 # signatures verify exactly as they will on users' machines.
 if [[ -n ${REPO_GPG_KEY:-} ]]; then
+    pacman-key --init # local signing needs pacman's own master key; containers lack one
     pacman-key --add "$work/packaging/arch/klook-repo.asc"
     pacman-key --lsign-key "$(gpg --show-keys --with-colons "$work/packaging/arch/klook-repo.asc" | awk -F: '/^fpr/{print $10; exit}')"
 fi
