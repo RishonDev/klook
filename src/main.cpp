@@ -18,6 +18,8 @@ void addOptions(QCommandLineParser &parser)
 {
     parser.addOption({QStringLiteral("daemon"), QStringLiteral("Start in the background without showing a preview.")});
     parser.addOption({QStringLiteral("quit"), QStringLiteral("Stop the running klook instance.")});
+    parser.addOption({QStringLiteral("next"), QStringLiteral("Show the next file in the folder of the open preview.")});
+    parser.addOption({QStringLiteral("previous"), QStringLiteral("Show the previous file in the folder of the open preview.")});
     parser.addPositionalArgument(QStringLiteral("file"), QStringLiteral("File to preview"));
 }
 
@@ -101,16 +103,18 @@ int main(int argc, char *argv[])
     parser.process(app);
 
     const bool quit = parser.isSet(QStringLiteral("quit"));
+    const bool step = parser.isSet(QStringLiteral("next")) || parser.isSet(QStringLiteral("previous"));
     const QString file = fileArgument(parser, QDir::currentPath());
-    if (file.isEmpty() && !quit && !parser.isSet(QStringLiteral("daemon")))
+    if (file.isEmpty() && !quit && !step && !parser.isSet(QStringLiteral("daemon")))
         parser.showHelp(1);
 
     // If klook is already running, this forwards our argv to it and exits 0,
     // so a second `klook` never loads any QML.
     KDBusService service(KDBusService::Unique);
 
-    // Reaching here means we are the only instance; --quit has nothing to stop.
-    if (quit)
+    // Reaching here means we are the only instance: --quit has nothing to stop
+    // and --next/--previous have no preview to step through.
+    if (quit || step)
         return 0;
 
     Previewer previewer;
@@ -122,6 +126,10 @@ int main(int argc, char *argv[])
                          forwarded.parse(arguments);
                          if (forwarded.isSet(QStringLiteral("quit"))) {
                              QCoreApplication::quit();
+                             return;
+                         }
+                         if (forwarded.isSet(QStringLiteral("next")) || forwarded.isSet(QStringLiteral("previous"))) {
+                             previewer.step(forwarded.isSet(QStringLiteral("next")) ? 1 : -1);
                              return;
                          }
                          const QString path = fileArgument(forwarded, workingDirectory);

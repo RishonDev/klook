@@ -47,6 +47,19 @@ target_link_libraries(klook PRIVATE
 include(GNUInstallDirs)
 install(TARGETS klook RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES data/klook.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+
+# Optionally start the resident instance at login so even the first preview is
+# instant. System installs use XDG autostart; user installs (prefix under $HOME)
+# get a per-user entry, since <prefix>/etc/xdg isn't on the autostart path.
+option(KLOOK_AUTOSTART "Start klook --daemon at login" OFF)
+if(KLOOK_AUTOSTART)
+    if(CMAKE_INSTALL_PREFIX MATCHES "^$ENV{HOME}")
+        set(KLOOK_AUTOSTART_DIR "$ENV{HOME}/.config/autostart")
+    else()
+        set(KLOOK_AUTOSTART_DIR "${CMAKE_INSTALL_FULL_SYSCONFDIR}/xdg/autostart")
+    endif()
+    install(FILES data/klook-autostart.desktop DESTINATION ${KLOOK_AUTOSTART_DIR} RENAME klook.desktop)
+endif()
 # KF6 only loads service menus that are executable.
 install(FILES data/klook-servicemenu.desktop
         DESTINATION ${CMAKE_INSTALL_DATADIR}/kio/servicemenus

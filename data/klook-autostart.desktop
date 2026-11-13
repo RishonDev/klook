@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=klook
+Comment=Keep the Quick Look previewer ready in the background
+Exec=klook --daemon
+Icon=document-preview
+NoDisplay=true
+Terminal=false
+X-KDE-autostart-phase=2

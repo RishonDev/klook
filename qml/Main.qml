@@ -13,15 +13,17 @@ Window {
     required property string iconName
     required property string details
     required property int cornerRadius
+    // "3 / 12" within the folder; set by the Previewer.
+    property string position: ""
+
+    // Asks the Previewer to show the previous (-1) or next (+1) file in the folder.
+    signal navigate(int delta)
 
     readonly property int headerHeight: 44
     readonly property int contentInset: Math.ceil(cornerRadius * 0.4)
     readonly property int maxWidth: Math.round(Screen.desktopAvailableWidth * 0.8)
     readonly property int maxHeight: Math.round(Screen.desktopAvailableHeight * 0.8)
 
-    // Starting size per view; images refit once their size is known.
-    width: kind === "other" ? 520 : kind === "pdf" ? 820 : kind === "archive" ? 640 : 960
-    height: kind === "other" ? 360 : kind === "pdf" ? maxHeight : 680
     minimumWidth: 360
     minimumHeight: 240
     visible: true
@@ -38,6 +40,29 @@ Window {
         width = Math.max(minimumWidth, Math.round(w * scale) + 2 * contentInset);
         height = Math.max(minimumHeight, Math.round(h * scale) + headerHeight + contentInset);
     }
+
+    // Starting size per view; images refit once their size is known.
+    function resetSize() {
+        width = kind === "other" ? 520 : kind === "pdf" ? 820 : kind === "archive" ? 640 : 960;
+        height = kind === "other" ? 360 : kind === "pdf" ? maxHeight : 680;
+    }
+
+    // Called on creation and by the Previewer after it swaps in a new file,
+    // so arrow-key navigation reuses this window instead of flashing a new one.
+    function reload() {
+        resetSize();
+        content.source = "";
+        content.setSource(viewFor(kind), {
+            filePath: filePath,
+            fileUrl: fileUrl,
+            fileName: fileName,
+            mimeName: mimeName,
+            iconName: iconName,
+            details: details
+        });
+    }
+
+    Component.onCompleted: reload()
 
     function viewFor(k) {
         switch (k) {
@@ -62,6 +87,14 @@ Window {
     Shortcut {
         sequences: ["Escape", "Space"]
         onActivated: root.close()
+    }
+    Shortcut {
+        sequence: "Left"
+        onActivated: root.navigate(-1)
+    }
+    Shortcut {
+        sequence: "Right"
+        onActivated: root.navigate(1)
     }
     Shortcut {
         sequences: ["Return", "Enter"]
@@ -104,12 +137,24 @@ Window {
                         ToolTip.text: qsTr("Close (Esc)")
                         ToolTip.visible: hovered
                     }
-                    Label {
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        text: root.fileName
-                        elide: Text.ElideMiddle
-                        horizontalAlignment: Text.AlignHCenter
-                        font.bold: true
+                        spacing: 0
+                        Label {
+                            Layout.fillWidth: true
+                            text: root.fileName
+                            elide: Text.ElideMiddle
+                            horizontalAlignment: Text.AlignHCenter
+                            font.bold: true
+                        }
+                        Label {
+                            Layout.fillWidth: true
+                            visible: root.position.length > 0
+                            text: root.position
+                            horizontalAlignment: Text.AlignHCenter
+                            font.pointSize: Qt.application.font.pointSize * 0.8
+                            opacity: 0.6
+                        }
                     }
                     ToolButton {
                         icon.name: "document-open"
@@ -129,15 +174,6 @@ Window {
                 Layout.leftMargin: root.contentInset
                 Layout.rightMargin: root.contentInset
                 Layout.bottomMargin: root.contentInset
-
-                Component.onCompleted: setSource(root.viewFor(root.kind), {
-                    filePath: root.filePath,
-                    fileUrl: root.fileUrl,
-                    fileName: root.fileName,
-                    mimeName: root.mimeName,
-                    iconName: root.iconName,
-                    details: root.details
-                })
 
                 // A view whose QML module is missing (e.g. QtPdf) falls back to file info.
                 onStatusChanged: if (status === Loader.Error) root.showFallback()

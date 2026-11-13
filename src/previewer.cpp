@@ -1,6 +1,9 @@
 #include "previewer.h"
 
+#include <QCollator>
+#include <QDir>
 #include <QFileInfo>
+#include <QTimer>
 #include <QIcon>
 #include <QLoggingCategory>
 #include <QLocale>
@@ -11,6 +14,10 @@
 #include <QUrl>
 
 #include <KWindowEffects>
+
+#include <malloc.h>
+
+#include <algorithm>
 
 #include "archivemodel.h"
 #include "iconprovider.h"
@@ -88,8 +95,10 @@ Previewer::Previewer(QObject *parent)
 
 void Previewer::toggle(const QString &path)
 {
-    const QString absolute = QFileInfo(path).absoluteFilePath();
-    qCDebug(lcKlook) << "toggle" << absolute << "showing:" << m_currentPath << "window:" << m_window.data();
+    // Canonical so "dir/../file" or a symlink still matches the open preview.
+    const QFileInfo info(path);
+    const QString absolute = info.canonicalFilePath().isEmpty() ? info.absoluteFilePath() : info.canonicalFilePath();
+    qCDebug(lcKlook) << "toggle" << absolute << "showing:" << m_currentPath;
     if (m_window && m_currentPath == absolute) {
         close();
         return;
@@ -103,6 +112,54 @@ void Previewer::close()
         m_window->close();
 }
 
+void Previewer::navigate(int delta)
+{
+    if (m_currentPath.isEmpty())
+        return;
+    const QStringList &siblings = siblingsOf(m_currentPath);
+    const qsizetype index = siblings.indexOf(m_currentPath);
+    const qsizetype target = index + delta;
+    // Stop at the ends of the folder rather than wrapping, like Quick Look.
+    if (index < 0 || target < 0 || target >= siblings.size())
+        return;
+    show(siblings.at(target));
+}
+
+const QStringList &Previewer::siblingsOf(const QString &path)
+{
+    const QFileInfo info(path);
+    const QString dirPath = info.absolutePath();
+    const QDateTime stamp = QFileInfo(dirPath).lastModified();
+    // Hidden files only join the list when we're already looking at one.
+    const bool withHidden = info.isHidden();
+    if (dirPath == m_siblingDir && stamp == m_siblingStamp && withHidden == m_siblingsWithHidden)
+        return m_siblings;
+
+    QDir::Filters filters = QDir::AllEntries | QDir::NoDotAndDotDot;
+    if (withHidden)
+        filters |= QDir::Hidden;
+    QFileInfoList entries = QDir(dirPath).entryInfoList(filters, QDir::NoSort);
+
+    // Dolphin's default order: folders first, then natural, case-insensitive names.
+    QCollator collator;
+    collator.setNumericMode(true);
+    collator.setCaseSensitivity(Qt::CaseInsensitive);
+    std::sort(entries.begin(), entries.end(), [&collator](const QFileInfo &a, const QFileInfo &b) {
+        if (a.isDir() != b.isDir())
+            return a.isDir();
+        return collator.compare(a.fileName(), b.fileName()) < 0;
+    });
+
+    m_siblings.clear();
+    m_siblings.reserve(entries.size());
+    for (const QFileInfo &entry : std::as_const(entries))
+        m_siblings.append(entry.absoluteFilePath());
+    m_siblingDir = dirPath;
+    m_siblingStamp = stamp;
+    m_siblingsWithHidden = withHidden;
+    return m_siblings;
+}
+
 void Previewer::show(const QString &path)
 {
     const QFileInfo info(path);
@@ -113,15 +170,26 @@ void Previewer::show(const QString &path)
     if (m_component->isError())
         return;
 
-    // One window per preview keeps every view's state fresh; the engine and
-    // compiled QML are reused, so this stays fast.
+    QVariantMap properties = propertiesFor(info);
+    const QStringList &siblings = siblingsOf(info.absoluteFilePath());
+    const qsizetype index = siblings.indexOf(info.absoluteFilePath());
+    properties.insert(QStringLiteral("position"),
+                      siblings.size() > 1 && index >= 0 ? QStringLiteral("%1 / %2").arg(index + 1).arg(siblings.size())
+                                                        : QString());
+    m_currentPath = info.canonicalFilePath().isEmpty() ? info.absoluteFilePath() : info.canonicalFilePath();
+
+    // Already showing something: swap the file into the same window, so arrow
+    // keys and repeated Dolphin requests don't flash a new window each time.
     if (m_window) {
-        m_window->disconnect(this);
-        m_window->close();
-        m_window->deleteLater();
+        for (auto it = properties.cbegin(); it != properties.cend(); ++it)
+            m_window->setProperty(it.key().toUtf8().constData(), it.value());
+        QMetaObject::invokeMethod(m_window, "reload");
+        m_window->requestActivate();
+        qCDebug(lcKlook) << "swapped" << m_currentPath;
+        return;
     }
 
-    QObject *object = m_component->createWithInitialProperties(propertiesFor(info));
+    QObject *object = m_component->createWithInitialProperties(properties);
     auto *window = qobject_cast<QQuickWindow *>(object);
     if (!window) {
         qCritical().noquote() << "klook: failed to create window:" << m_component->errorString();
@@ -129,28 +197,42 @@ void Previewer::show(const QString &path)
         return;
     }
     m_window = window;
-    m_currentPath = info.absoluteFilePath();
 
     const auto applyBlur = [window] {
         KWindowEffects::enableBlurBehind(window, true, roundedRegion(window->size(), CornerRadius));
     };
     connect(window, &QWindow::widthChanged, window, applyBlur);
     connect(window, &QWindow::heightChanged, window, applyBlur);
+    connect(window, SIGNAL(navigate(int)), this, SLOT(navigate(int)));
 
     // QML calls close(); tear the window down once it is hidden.
     connect(window, &QWindow::visibleChanged, this, [this, window](bool visible) {
         if (visible)
             return;
-        qCDebug(lcKlook) << "hidden" << window << "current:" << (m_window == window);
+        qCDebug(lcKlook) << "hidden" << window->title();
         window->deleteLater();
         if (m_window == window) {
             m_currentPath.clear();
             Q_EMIT closed();
         }
+        releaseMemory();
     });
 
     window->show();
     applyBlur();
     window->requestActivate();
-    qCDebug(lcKlook) << "shown" << m_currentPath << "token:" << qgetenv("XDG_ACTIVATION_TOKEN");
+    qCDebug(lcKlook) << "shown" << m_currentPath;
+}
+
+void Previewer::releaseMemory()
+{
+    // Once the window is really gone, drop JS garbage and hand freed heap pages
+    // back to the OS, so the idle resident instance stays small.
+    QTimer::singleShot(200, this, [this] {
+        if (m_window)
+            return;
+        m_engine.collectGarbage();
+        malloc_trim(0);
+        qCDebug(lcKlook) << "trimmed memory";
+    });
 }
